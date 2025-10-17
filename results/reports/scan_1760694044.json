@@ -1,0 +1,14 @@
+{
+  "scan_id": 1760694044,
+  "timestamp": "2025-10-17T15:10:44.875707",
+  "target_url": "http://www.itsecgames.com/index.htm",
+  "scan_duration": 279.389940738678,
+  "vulnerabilities_found": 0,
+  "vulnerabilities": [],
+  "summary": {
+    "total": 0,
+    "by_type": {},
+    "by_method": {},
+    "risk_level": "LOW"
+  }
+}

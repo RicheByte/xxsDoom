@@ -1,0 +1,12 @@
+{
+  "scan_id": 1760692120,
+  "timestamp": "2025-10-17T14:38:40.346957",
+  "scan_duration": 178.66676568984985,
+  "vulnerabilities_found": 0,
+  "vulnerabilities": [],
+  "summary": {
+    "total": 0,
+    "by_type": {},
+    "risk_level": "LOW"
+  }
+}
