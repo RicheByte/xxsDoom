@@ -43,13 +43,13 @@ A comprehensive, feature-rich Cross-Site Scripting (XSS) vulnerability scanner w
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/xsscan.git
-   cd xsscan
+   git clone https://github.com/yourusername/xxsDoom.git
+   cd xxsDoom
    ```
 
 2. **Install dependencies**
    ```bash
-   pip install selenium
+   pip install -r requirements.txt
    ```
 
 3. **Setup ChromeDriver**
