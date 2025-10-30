@@ -1,0 +1,27 @@
+{
+  "scan_id": 1761747720,
+  "timestamp": "2025-10-29T19:52:00.658457",
+  "target_url": "http://testphp.vulnweb.com/search.php?test=query",
+  "scan_duration": 67.78761434555054,
+  "vulnerabilities_found": 1,
+  "vulnerabilities": [
+    {
+      "type": "URL Parameter",
+      "parameter": "test",
+      "payload": "'><script>alert('XSS')</script>",
+      "url": "http://testphp.vulnweb.com/search.php?test=%27%3E%3Cscript%3Ealert%28%27XSS%27%29%3C%2Fscript%3E",
+      "detection_method": "alert_execution",
+      "evidence": "Alert triggered with text: XSS"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "by_type": {
+      "URL Parameter": 1
+    },
+    "by_method": {
+      "alert_execution": 1
+    },
+    "risk_level": "HIGH"
+  }
+}

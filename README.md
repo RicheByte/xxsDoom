@@ -9,6 +9,12 @@ A comprehensive, feature-rich Cross-Site Scripting (XSS) vulnerability scanner w
 
 ##  Features
 
+### 🔥 **NEW: Aggressive Parallel Scanning**
+- **Multi-threaded Scanning**: Run with 50, 100, or 200+ parallel browser instances
+- **Lightning Fast**: Scan at speeds like having 1000 people testing simultaneously
+- **Scalable Performance**: Choose from Aggressive, Ultra, or INSANE mode based on your system
+- **Smart Resource Management**: Automatic browser pooling and thread-safe operations
+
 ###  **Advanced Detection**
 - **Multiple Detection Methods**: Alert-based, reflection analysis, DOM-based, and attribute context detection
 - **Comprehensive Testing**: URL parameters, fragments, form inputs, and headers
@@ -60,11 +66,45 @@ A comprehensive, feature-rich Cross-Site Scripting (XSS) vulnerability scanner w
 ### Verify Installation
 
 ```bash
-# Test with a known vulnerable site
+# 1. Check if everything is installed correctly
+python check_setup.py
+
+# 2. Run automated tests
+python test_scanner.py
+
+# 3. Test with a known vulnerable site (safe to test)
 python xsscan.py "http://testphp.vulnweb.com/search.php?test=query" -v
 ```
 
 ##  Usage
+
+### 🔥 Aggressive Parallel Scanning (NEW!)
+
+**Scan like 1000 people working simultaneously:**
+
+```bash
+# Aggressive mode - 50 parallel threads (50x faster)
+python xsscan.py -a https://example.com
+
+# Ultra aggressive - 100 parallel threads (100x faster)
+python xsscan.py --ultra https://example.com
+
+# INSANE mode - 200+ parallel threads (Maximum speed!)
+python xsscan.py --insane https://example.com
+
+# Custom thread count
+python xsscan.py --threads 75 https://example.com
+```
+
+**Mode Comparison:**
+| Mode | Speed | Resource Usage | Best For |
+|------|-------|----------------|----------|
+| Standard | 1x | Low | Safe, stable scans |
+| Aggressive (`-a`) | ~50x | Medium | Fast scanning |
+| Ultra (`--ultra`) | ~100x | High | Powerful systems |
+| INSANE (`--insane`) | ~200x | Very High | Maximum speed |
+
+📖 **[Full Aggressive Mode Guide](AGGRESSIVE_MODE.md)**
 
 ### Command Line Interface (CLI)
 
@@ -94,6 +134,13 @@ Options:
   --timeout SECONDS                             Request timeout (default: 15)
   --delay SECONDS                               Delay between requests (default: 0.5)
   -v, --verbose                                 Verbose output
+  
+  🔥 Aggressive Parallel Mode:
+  -a, --aggressive                              Enable aggressive mode (50 threads)
+  --ultra                                       Ultra aggressive mode (100 threads)
+  --insane                                      INSANE mode (200+ threads)
+  --threads N                                   Custom thread count
+  
   -h, --help                                    Show help message
 ```
 

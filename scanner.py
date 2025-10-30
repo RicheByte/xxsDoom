@@ -1,28 +1,47 @@
 #!/usr/bin/env python3
-import asyncio
-import aiohttp
+"""
+Optimized XSS Scanner - Enhanced Performance and Reliability
+AGGRESSIVE MODE: Parallel scanning with multi-threading
+"""
 import urllib.parse
 import re
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from queue import Queue
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
+from selenium.webdriver.common.keys import Keys
+
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+    WEBDRIVER_MANAGER_AVAILABLE = True
+except ImportError:
+    WEBDRIVER_MANAGER_AVAILABLE = False
+
 from config import config
 
 class XSSScanner:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, aggressive=False, max_threads=10):
         self.results = []
-        self.session = None
-        self.driver_pool = []
-        self.lock = threading.Lock()
+        self.driver = None
         self.verbose = verbose
+        self.aggressive = aggressive
+        # Limit max threads to reasonable amount to prevent resource exhaustion
+        self.max_threads = min(max_threads, 20) if aggressive else 1
         self.scan_start_time = None
-
+        self.tested_payloads = set()
+        self.vulnerable_payloads = []
+        self.results_lock = threading.Lock()
+        self.driver_pool = []
+        self.driver_lock = threading.Lock()
+        self.max_pool_size = min(max_threads // 2, 10)  # Limit browser pool size
+        
     def log(self, message, level="info"):
         """Enhanced logging with levels"""
         if level == "debug" and not self.verbose:
@@ -36,13 +55,14 @@ class XSSScanner:
             "error": "[-]"
         }
         prefix = prefixes.get(level, "[*]")
-        print(f"{prefix} {message}")
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"{timestamp} {prefix} {message}")
 
-    def setup_drivers(self, count=1):
-        """Setup browser instances with enhanced options"""
-        self.log(f"Setting up {count} browser instance(s)...")
+    def setup_driver(self):
+        """Setup browser instance with enhanced options"""
+        self.log("Setting up browser instance...")
         
-        for i in range(count):
+        try:
             options = Options()
             
             # Enhanced Chrome options for better compatibility
@@ -53,101 +73,352 @@ class XSSScanner:
             options.add_argument("--disable-gpu")
             options.add_argument("--disable-web-security")
             options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_argument("--disable-features=VizDisplayCompositor")
             options.add_argument(f"--user-agent={config.user_agent}")
             options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
             options.add_experimental_option('useAutomationExtension', False)
             
             # Additional security bypass options
             options.add_argument("--disable-xss-auditor")
-            options.add_argument("--disable-web-security")
             options.add_argument("--allow-running-insecure-content")
+            options.add_argument("--ignore-certificate-errors")
             
-            try:
+            # Performance optimizations
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-plugins")
+            options.add_argument("--disable-images")  # Faster loading
+            
+            # Aggressive mode: reduce timeouts
+            if self.aggressive:
+                options.page_load_strategy = 'eager'
+            
+            # Try to use webdriver-manager for automatic ChromeDriver management
+            if WEBDRIVER_MANAGER_AVAILABLE:
+                try:
+                    service = Service(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(service=service, options=options)
+                    self.log("Browser initialized with webdriver-manager", "success")
+                except Exception as e:
+                    self.log(f"webdriver-manager failed, trying manual: {e}", "debug")
+                    driver = webdriver.Chrome(options=options)
+            else:
                 driver = webdriver.Chrome(options=options)
-                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                driver.set_script_timeout(config.timeout)
-                driver.set_page_load_timeout(config.timeout)
-                self.driver_pool.append(driver)
-                self.log(f"Browser instance {i+1} initialized successfully", "debug")
-            except WebDriverException as e:
-                self.log(f"WebDriver initialization failed: {e}", "error")
+                
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            timeout = config.timeout // 2 if self.aggressive else config.timeout
+            driver.set_script_timeout(timeout)
+            driver.set_page_load_timeout(timeout)
+            
+            if not self.aggressive:
+                self.driver = driver
+                self.log("Browser instance initialized successfully", "success")
+            
+            return driver
+            
+        except WebDriverException as e:
+            self.log(f"WebDriver initialization failed: {e}", "error")
+            # Try with simpler options
+            try:
+                options = Options()
+                if config.headless:
+                    options.add_argument("--headless")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                
+                if WEBDRIVER_MANAGER_AVAILABLE:
+                    service = Service(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(service=service, options=options)
+                else:
+                    driver = webdriver.Chrome(options=options)
+                    
+                self.log("Browser instance initialized with fallback options", "warn")
+                if not self.aggressive:
+                    self.driver = driver
+                return driver
+            except Exception as e2:
+                self.log(f"Fallback WebDriver also failed: {e2}", "error")
+                self.log("\nPlease install ChromeDriver:", "error")
+                self.log("  Option 1: pip install webdriver-manager (recommended)", "error")
+                self.log("  Option 2: Download from https://chromedriver.chromium.org/", "error")
                 raise
 
-    def close_drivers(self):
-        """Cleanup browser instances"""
-        self.log("Closing browser instances...", "debug")
-        for driver in self.driver_pool:
+    def close_driver(self, driver=None):
+        """Cleanup browser instance"""
+        target_driver = driver if driver else self.driver
+        if target_driver:
             try:
-                driver.quit()
+                target_driver.quit()
+                self.log("Browser instance closed", "debug")
             except Exception as e:
                 self.log(f"Error closing driver: {e}", "debug")
-        self.driver_pool.clear()
+        if not driver:
+            self.driver = None
+    
+    def get_driver_from_pool(self):
+        """Get a driver from pool or create new one in aggressive mode"""
+        with self.driver_lock:
+            if self.driver_pool:
+                driver = self.driver_pool.pop()
+                self.log(f"Reusing driver from pool (pool size: {len(self.driver_pool)})", "debug")
+                return driver
+            else:
+                # Only create if under pool limit
+                if not hasattr(self, '_active_drivers'):
+                    self._active_drivers = 0
+                if self._active_drivers >= self.max_pool_size:
+                    # Wait a bit and retry from pool
+                    pass
+                else:
+                    self._active_drivers += 1
+                    self.log(f"Creating new driver ({self._active_drivers}/{self.max_pool_size})", "debug")
+                    return self.setup_driver()
+        
+        # If we couldn't create, wait and try again from pool
+        time.sleep(0.5)
+        with self.driver_lock:
+            if self.driver_pool:
+                return self.driver_pool.pop()
+        return None
+    
+    def return_driver_to_pool(self, driver):
+        """Return driver to pool for reuse"""
+        if not driver:
+            return
+        with self.driver_lock:
+            if len(self.driver_pool) < self.max_pool_size:
+                self.driver_pool.append(driver)
+                self.log(f"Returned driver to pool (pool size: {len(self.driver_pool)})", "debug")
+            else:
+                self.close_driver(driver)
+                if hasattr(self, '_active_drivers'):
+                    self._active_drivers -= 1
 
-    def scan_url(self, target_url, payload_category="all", test_forms=True, test_headers=True):
-        """Main scanning function with enhanced capabilities"""
+    def scan_url(self, target_url, payload_category="basic", test_forms=True, test_headers=False):
+        """Main scanning function with enhanced capabilities and aggressive parallel mode"""
         self.scan_start_time = time.time()
-        self.log(f"Starting XSS scan for: {target_url}")
-        self.log(f"Payload category: {payload_category}")
+        self.log(f"Starting XSS scan for: {target_url}", "info")
+        self.log(f"Payload category: {payload_category}", "info")
+        
+        if self.aggressive:
+            self.log(f"🔥 AGGRESSIVE MODE ENABLED - {self.max_threads} parallel threads", "warn")
         
         payloads = config.get_payloads(payload_category)
         if not payloads:
             self.log("No payloads loaded!", "error")
             return []
 
-        self.log(f"Loaded {len(payloads)} payloads")
+        self.log(f"Loaded {len(payloads)} unique payloads", "info")
         
         try:
-            self.setup_drivers(count=1)  # Use single driver for stability
-            
-            # Test different injection points
-            self.log("Beginning comprehensive XSS testing...")
-            
-            url_results = self.test_url_parameters(target_url, payloads)
-            self.results.extend(url_results)
-            self.log(f"URL parameter testing: {len(url_results)} vulnerabilities found")
-            
-            fragment_results = self.test_url_fragments(target_url, payloads)
-            self.results.extend(fragment_results)
-            self.log(f"URL fragment testing: {len(fragment_results)} vulnerabilities found")
-            
-            if test_forms:
-                form_results = self.test_forms(target_url, payloads)
-                self.results.extend(form_results)
-                self.log(f"Form testing: {len(form_results)} vulnerabilities found")
-                
-            if test_headers:
-                header_results = self.test_headers(target_url, payloads)
-                self.results.extend(header_results)
-                self.log(f"Header testing: {len(header_results)} vulnerabilities found")
+            if self.aggressive:
+                # Aggressive parallel mode
+                self._aggressive_scan(target_url, payloads, test_forms, test_headers)
+            else:
+                # Standard sequential mode
+                self.setup_driver()
+                self._standard_scan(target_url, payloads, test_forms, test_headers)
 
+        except KeyboardInterrupt:
+            self.log("Scan interrupted by user", "warn")
+            raise
         except Exception as e:
             self.log(f"Scan error: {e}", "error")
         finally:
-            self.close_drivers()
+            # Cleanup all drivers
+            if self.aggressive:
+                with self.driver_lock:
+                    for driver in self.driver_pool:
+                        self.close_driver(driver)
+                    self.driver_pool.clear()
+            else:
+                self.close_driver()
 
         scan_time = time.time() - self.scan_start_time
-        self.log(f"Scan completed in {scan_time:.2f} seconds. Total vulnerabilities: {len(self.results)}")
+        self.log(f"Scan completed in {scan_time:.2f} seconds", "info")
+        self.log(f"Total vulnerabilities found: {len(self.results)}", 
+                "success" if self.results else "info")
         return self.results
+    
+    def _standard_scan(self, target_url, payloads, test_forms, test_headers):
+        """Standard sequential scanning"""
+        self.log("Beginning comprehensive XSS testing...", "info")
+        
+        # URL parameter testing
+        url_results = self.test_url_parameters(target_url, payloads)
+        self.results.extend(url_results)
+        self.log(f"URL parameter testing: {len(url_results)} vulnerabilities found", 
+                "success" if url_results else "info")
+        
+        # URL fragment testing
+        fragment_results = self.test_url_fragments(target_url, payloads)
+        self.results.extend(fragment_results)
+        self.log(f"URL fragment testing: {len(fragment_results)} vulnerabilities found", 
+                "success" if fragment_results else "info")
+        
+        # Form testing
+        if test_forms:
+            form_results = self.test_forms(target_url, payloads)
+            self.results.extend(form_results)
+            self.log(f"Form testing: {len(form_results)} vulnerabilities found", 
+                    "success" if form_results else "info")
+            
+        # Header testing
+        if test_headers:
+            header_results = self.test_headers(target_url, payloads[:10])
+            self.results.extend(header_results)
+            self.log(f"Header testing: {len(header_results)} vulnerabilities found", 
+                    "success" if header_results else "info")
+    
+    def _aggressive_scan(self, target_url, payloads, test_forms, test_headers):
+        """Aggressive parallel scanning with thread pool"""
+        self.log("🔥 Beginning AGGRESSIVE parallel XSS testing...", "warn")
+        
+        tasks = []
+        
+        # Create URL parameter tasks
+        parsed = urllib.parse.urlparse(target_url)
+        query_params = urllib.parse.parse_qs(parsed.query)
+        test_parameters = ['q', 'search', 'id', 'name', 'query', 'keyword', 'term', 
+                          'input', 'data', 'value', 'user', 'username', 'email', 'page']
+        parameters_to_test = list(query_params.keys()) if query_params else test_parameters[:5]
+        
+        for param in parameters_to_test:
+            for payload in payloads:
+                tasks.append(('url_param', target_url, param, payload))
+        
+        # Create fragment tasks - test all payloads
+        for payload in payloads:
+            tasks.append(('fragment', target_url, None, payload))
+        
+        self.log(f"Created {len(tasks)} parallel tasks", "info")
+        
+        # Execute tasks in parallel
+        completed = 0
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            futures = {executor.submit(self._execute_task, task): task for task in tasks}
+            
+            for future in as_completed(futures):
+                completed += 1
+                if completed % 50 == 0:
+                    self.log(f"Progress: {completed}/{len(tasks)} tasks completed", "info")
+                try:
+                    result = future.result()
+                    if result:
+                        with self.results_lock:
+                            self.results.append(result)
+                            self.log(f"✓ Vulnerability found! Total: {len(self.results)}", "success")
+                except Exception as e:
+                    self.log(f"Task error: {e}", "debug")
+        
+        # Form testing (still sequential due to complexity)
+        if test_forms:
+            self.log("Testing forms (sequential)...", "info")
+            driver = self.get_driver_from_pool()
+            try:
+                form_results = self._test_forms_with_driver(driver, target_url, payloads)
+                self.results.extend(form_results)
+                self.log(f"Form testing: {len(form_results)} vulnerabilities found", 
+                        "success" if form_results else "info")
+            finally:
+                self.return_driver_to_pool(driver)
+    
+    def _execute_task(self, task):
+        """Execute a single scan task with its own driver"""
+        task_type, url, param, payload = task
+        driver = self.get_driver_from_pool()
+        
+        if not driver:
+            self.log("Could not get driver from pool, skipping task", "warn")
+            return None
+        
+        try:
+            if task_type == 'url_param':
+                return self._test_single_url_param(driver, url, param, payload)
+            elif task_type == 'fragment':
+                return self._test_single_fragment(driver, url, payload)
+        except Exception as e:
+            self.log(f"Error in task {task_type}: {e}", "debug")
+            return None
+        finally:
+            self.return_driver_to_pool(driver)
+    
+    def _test_single_url_param(self, driver, base_url, param, payload):
+        """Test single URL parameter with payload"""
+        if not driver:
+            return None
+            
+        try:
+            parsed = urllib.parse.urlparse(base_url)
+            query_params = urllib.parse.parse_qs(parsed.query)
+            
+            if query_params:
+                new_params = query_params.copy()
+                new_params[param] = [payload]
+                new_query = urllib.parse.urlencode(new_params, doseq=True)
+                test_url = urllib.parse.urlunparse(parsed._replace(query=new_query))
+            else:
+                test_url = f"{base_url}?{param}={urllib.parse.quote(payload)}"
+            
+            # Add small delay to prevent overwhelming the target
+            time.sleep(0.1)
+            
+            detection_result = self._detect_xss_with_driver(driver, test_url, payload, param)
+            
+            if detection_result['vulnerable']:
+                return {
+                    'type': 'URL Parameter',
+                    'parameter': param,
+                    'payload': payload,
+                    'url': test_url,
+                    'detection_method': detection_result['method'],
+                    'evidence': detection_result.get('evidence', '')
+                }
+        except Exception as e:
+            self.log(f"Error testing param {param}: {e}", "debug")
+        return None
+    
+    def _test_single_fragment(self, driver, base_url, payload):
+        """Test single URL fragment with payload"""
+        if not driver:
+            return None
+            
+        try:
+            test_url = f"{base_url}#{urllib.parse.quote(payload)}"
+            
+            # Add small delay to prevent overwhelming the target
+            time.sleep(0.1)
+            
+            detection_result = self._detect_xss_with_driver(driver, test_url, payload, 'fragment')
+            
+            if detection_result['vulnerable']:
+                return {
+                    'type': 'URL Fragment',
+                    'payload': payload,
+                    'url': test_url,
+                    'detection_method': detection_result['method'],
+                    'evidence': detection_result.get('evidence', '')
+                }
+        except Exception as e:
+            self.log(f"Error testing fragment: {e}", "debug")
+        return None
 
     def test_url_parameters(self, base_url, payloads):
-        """Enhanced URL parameter testing with multiple detection methods"""
-        self.log("Testing URL parameters with enhanced detection...")
+        """Enhanced URL parameter testing with smart detection"""
+        self.log("Testing URL parameters...", "info")
         vulnerabilities = []
         
         parsed = urllib.parse.urlparse(base_url)
         query_params = urllib.parse.parse_qs(parsed.query)
         
-        # Test parameters to try
+        # Smart parameter detection
         test_parameters = ['q', 'search', 'id', 'name', 'query', 'keyword', 'term', 
-                          'input', 'data', 'value', 'user', 'username', 'email']
+                          'input', 'data', 'value', 'user', 'username', 'email', 'page']
         
-        parameters_to_test = list(query_params.keys()) if query_params else test_parameters
+        parameters_to_test = list(query_params.keys()) if query_params else test_parameters[:5]
         
         for param in parameters_to_test:
             self.log(f"Testing parameter: {param}", "debug")
             
-            for payload_idx, payload in enumerate(payloads):
+            for payload in payloads:
                 try:
                     # Create test URL
                     if query_params:
@@ -174,12 +445,16 @@ class XSSScanner:
                             'evidence': detection_result.get('evidence', '')
                         }
                         vulnerabilities.append(vuln_info)
-                        self.log(f"XSS found in parameter '{param}' using {detection_result['method']}", "success")
-                        
-                        # If we found one vulnerability with alert, no need to test more payloads for this param
-                        if detection_result['method'] == 'alert_execution':
-                            break
+                        if payload not in self.vulnerable_payloads:
+                            self.vulnerable_payloads.append(payload)
+                        self.log(f"✓ XSS found in parameter '{param}' using {detection_result['method']}", "success")
+                    
+                    # Small delay to avoid rate limiting
+                    delay = config.delay / 5 if self.aggressive else config.delay
+                    time.sleep(delay)
                             
+                except KeyboardInterrupt:
+                    raise
                 except Exception as e:
                     self.log(f"Error testing parameter {param}: {e}", "debug")
         
@@ -187,10 +462,10 @@ class XSSScanner:
 
     def test_url_fragments(self, base_url, payloads):
         """Enhanced URL fragment testing for DOM-based XSS"""
-        self.log("Testing URL fragments for DOM XSS...")
+        self.log("Testing URL fragments for DOM XSS...", "info")
         vulnerabilities = []
         
-        for payload_idx, payload in enumerate(payloads):
+        for payload in payloads:
             try:
                 test_url = f"{base_url}#{urllib.parse.quote(payload)}"
                 
@@ -207,32 +482,40 @@ class XSSScanner:
                         'detection_method': detection_result['method'],
                         'evidence': detection_result.get('evidence', '')
                     })
-                    self.log(f"DOM XSS found in fragment using {detection_result['method']}", "success")
+                    self.log(f"✓ DOM XSS found in fragment", "success")
+                
+                delay = config.delay / 5 if self.aggressive else config.delay
+                time.sleep(delay)
                     
+            except KeyboardInterrupt:
+                raise
             except Exception as e:
                 self.log(f"Error testing fragment: {e}", "debug")
                 
         return vulnerabilities
 
     def test_forms(self, url, payloads):
-        """Enhanced form testing with better detection"""
-        self.log("Testing forms for XSS vulnerabilities...")
+        """Enhanced form testing with smart recovery"""
+        return self._test_forms_with_driver(self.driver, url, payloads)
+    
+    def _test_forms_with_driver(self, driver, url, payloads):
+        """Test forms with specific driver instance"""
+        self.log("Testing forms for XSS vulnerabilities...", "info")
         vulnerabilities = []
         
-        if not self.driver_pool:
+        if not driver:
             return vulnerabilities
             
-        driver = self.driver_pool[0]
-        
         try:
             driver.get(url)
-            WebDriverWait(driver, config.timeout).until(
+            timeout = config.timeout // 2 if self.aggressive else config.timeout
+            WebDriverWait(driver, timeout).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
             
             # Find all forms
             forms = driver.find_elements(By.TAG_NAME, "form")
-            self.log(f"Found {len(forms)} forms to test")
+            self.log(f"Found {len(forms)} form(s) to test", "info")
             
             if not forms:
                 return vulnerabilities
@@ -241,102 +524,87 @@ class XSSScanner:
                 self.log(f"Testing form {form_idx + 1}/{len(forms)}", "debug")
                 
                 # Get all input elements
-                inputs = form.find_elements(By.XPATH, ".//input[@type='text'] | .//input[@type='search'] | .//input[not(@type)] | .//textarea")
+                inputs = form.find_elements(By.XPATH, 
+                    ".//input[@type='text'] | .//input[@type='search'] | .//input[not(@type)] | .//textarea")
                 
                 if not inputs:
                     self.log(f"No suitable inputs found in form {form_idx + 1}", "debug")
                     continue
                     
-                self.log(f"Found {len(inputs)} input fields in form {form_idx + 1}", "debug")
+                self.log(f"Found {len(inputs)} input field(s) in form {form_idx + 1}", "debug")
                 
                 for input_idx, inp in enumerate(inputs):
                     input_name = inp.get_attribute("name") or inp.get_attribute("id") or f"input_{input_idx}"
                     self.log(f"Testing input: {input_name}", "debug")
                     
-                    # Test with a subset of payloads for forms (to avoid timeouts)
-                    for payload_idx, payload in enumerate(payloads[:8]):
+                    # Test with limited payloads
+                    for payload in payloads:
                         try:
-                            # Store original page for navigation
-                            original_url = driver.current_url
+                            # Navigate back to original page
+                            if driver.current_url != url:
+                                driver.get(url)
+                                WebDriverWait(driver, timeout).until(
+                                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                                )
+                                forms = driver.find_elements(By.TAG_NAME, "form")
+                                if form_idx >= len(forms):
+                                    break
+                                form = forms[form_idx]
+                                inputs = form.find_elements(By.XPATH, 
+                                    ".//input[@type='text'] | .//input[@type='search'] | .//input[not(@type)] | .//textarea")
+                                if input_idx >= len(inputs):
+                                    break
+                                inp = inputs[input_idx]
                             
                             # Clear and set payload
                             inp.clear()
                             inp.send_keys(payload)
                             
-                            # Try different submission methods
-                            submitted = False
-                            
-                            # Method 1: Direct form submit
+                            # Try form submission
                             try:
                                 form.submit()
-                                submitted = True
                             except:
-                                pass
+                                try:
+                                    inp.send_keys(Keys.RETURN)
+                                except:
+                                    pass
                             
-                            # Method 2: Click submit button
-                            if not submitted:
-                                submit_buttons = form.find_elements(By.XPATH, 
-                                    ".//input[@type='submit'] | .//button[@type='submit'] | .//input[@type='image']")
-                                if submit_buttons:
-                                    submit_buttons[0].click()
-                                    submitted = True
+                            # Wait and check
+                            time.sleep(1)
                             
-                            # Method 3: Press Enter
-                            if not submitted:
-                                from selenium.webdriver.common.keys import Keys
-                                inp.send_keys(Keys.RETURN)
-                                submitted = True
+                            current_url = driver.current_url
+                            detection_result = self._detect_xss_with_driver(driver, current_url, payload, f"form_{input_name}")
                             
-                            if submitted:
-                                # Wait for page load
-                                time.sleep(1)
-                                
-                                # Check for XSS with multiple methods
-                                current_url = driver.current_url
-                                detection_result = self.detect_xss_advanced(current_url, payload, f"form_{input_name}")
-                                
-                                if detection_result['vulnerable']:
-                                    vulnerabilities.append({
-                                        'type': 'Form Input',
-                                        'form_index': form_idx,
-                                        'input_name': input_name,
-                                        'payload': payload,
-                                        'url': current_url,
-                                        'detection_method': detection_result['method'],
-                                        'evidence': detection_result.get('evidence', '')
-                                    })
-                                    self.log(f"XSS found in form input '{input_name}'", "success")
-                                    break  # Stop testing this input after first success
+                            if detection_result['vulnerable']:
+                                vuln_info = {
+                                    'type': 'Form Input',
+                                    'form_index': form_idx,
+                                    'input_name': input_name,
+                                    'payload': payload,
+                                    'url': current_url,
+                                    'detection_method': detection_result['method'],
+                                    'evidence': detection_result.get('evidence', '')
+                                }
+                                with self.results_lock:
+                                    vulnerabilities.append(vuln_info)
+                                self.log(f"✓ XSS found in form input '{input_name}'", "success")
+                                break  # Stop testing this input
                             
-                            # Navigate back to original page
-                            if driver.current_url != original_url:
-                                driver.get(original_url)
-                                WebDriverWait(driver, config.timeout).until(
-                                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                                )
+                            delay = config.delay / 5 if self.aggressive else config.delay
+                            time.sleep(delay)
                                 
-                            # Re-find the form and input
-                            forms = driver.find_elements(By.TAG_NAME, "form")
-                            if form_idx < len(forms):
-                                form = forms[form_idx]
-                                inputs = form.find_elements(By.XPATH, ".//input[@type='text'] | .//input[@type='search'] | .//input[not(@type)] | .//textarea")
-                                if input_idx < len(inputs):
-                                    inp = inputs[input_idx]
-                            else:
-                                break
-                                
+                        except KeyboardInterrupt:
+                            raise
                         except Exception as e:
                             self.log(f"Error testing form input: {e}", "debug")
-                            # Try to recover by going back to original URL
+                            # Try to recover
                             try:
                                 driver.get(url)
-                                WebDriverWait(driver, config.timeout).until(
-                                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                                )
-                                forms = driver.find_elements(By.TAG_NAME, "form")
                             except:
                                 break
                             
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             self.log(f"Form testing error: {e}", "error")
             
@@ -344,16 +612,19 @@ class XSSScanner:
 
     def test_headers(self, url, payloads):
         """Test XSS through HTTP headers"""
-        self.log("Testing HTTP headers...")
-        # TODO: Implement header-based XSS testing
+        self.log("Testing HTTP headers...", "info")
+        # TODO: Implement header-based XSS testing with requests library
         return []
 
     def detect_xss_advanced(self, url, payload, context):
-        """Enhanced XSS detection with multiple methods"""
-        if not self.driver_pool:
+        """Enhanced XSS detection with multiple methods (uses self.driver)"""
+        return self._detect_xss_with_driver(self.driver, url, payload, context)
+    
+    def _detect_xss_with_driver(self, driver, url, payload, context):
+        """Enhanced XSS detection with multiple methods using specific driver"""
+        if not driver:
             return {'vulnerable': False, 'method': 'no_driver'}
             
-        driver = self.driver_pool[0]
         detection_result = {
             'vulnerable': False,
             'method': 'none',
@@ -361,197 +632,107 @@ class XSSScanner:
         }
         
         try:
-            # Navigate to the URL
-            driver.get(url)
+            # Navigate to the URL with timeout handling
+            try:
+                driver.get(url)
+                # Small wait for page to stabilize
+                time.sleep(0.5)
+            except TimeoutException:
+                self.log(f"Page load timeout for {context}", "debug")
+                return detection_result
+            except Exception as e:
+                self.log(f"Connection error for {context}: {str(e)[:100]}", "debug")
+                return detection_result
             
             # Method 1: Alert-based detection (most reliable)
             try:
-                WebDriverWait(driver, 2).until(EC.alert_is_present())
+                timeout = 1 if self.aggressive else 3
+                WebDriverWait(driver, timeout).until(EC.alert_is_present())
                 alert = driver.switch_to.alert
                 alert_text = alert.text
                 alert.accept()
                 
-                if any(detection in alert_text for detection in config.detection_strings):
-                    detection_result.update({
-                        'vulnerable': True,
-                        'method': 'alert_execution',
-                        'evidence': f"Alert triggered with text: {alert_text}"
-                    })
-                    return detection_result
+                detection_result.update({
+                    'vulnerable': True,
+                    'method': 'alert_execution',
+                    'evidence': f"Alert triggered with text: {alert_text}"
+                })
+                return detection_result
             except TimeoutException:
                 pass  # No alert detected
+            except Exception as e:
+                self.log(f"Alert check error: {str(e)[:50]}", "debug")
             
-            # Method 2: Reflection analysis with context detection
-            page_source = driver.page_source
-            reflected_locations = self.analyze_reflection(page_source, payload)
-            
-            if reflected_locations:
-                # Check if reflection is in dangerous context
-                dangerous_contexts = self.check_dangerous_contexts(driver, payload)
+            # Method 2: Check for dangerous reflection contexts (only if not aggressive or randomly sample)
+            if not self.aggressive or hash(payload) % 5 == 0:  # Sample 20% in aggressive mode
+                try:
+                    page_source = driver.page_source
+                    if payload in page_source:
+                        dangerous_contexts = self._check_dangerous_contexts_with_driver(driver, payload)
+                        
+                        if dangerous_contexts:
+                            detection_result.update({
+                                'vulnerable': True,
+                                'method': 'dangerous_reflection',
+                                'evidence': f"Payload in dangerous context: {', '.join(dangerous_contexts)}"
+                            })
+                            return detection_result
+                except Exception as e:
+                    self.log(f"Error checking reflection: {str(e)[:50]}", "debug")
                 
-                if dangerous_contexts:
-                    detection_result.update({
-                        'vulnerable': True,
-                        'method': 'dangerous_reflection',
-                        'evidence': f"Payload reflected in dangerous context: {dangerous_contexts}"
-                    })
-                    return detection_result
-                
-                # If we have reflection but no dangerous context, still report it
-                detection_result.update({
-                    'vulnerable': False,  # Not exploitable but interesting
-                    'method': 'reflection_only',
-                    'evidence': f"Payload reflected but not in exploitable context: {reflected_locations}"
-                })
-            
-            # Method 3: DOM-based XSS detection
-            dom_vulnerabilities = self.check_dom_xss(driver, payload)
-            if dom_vulnerabilities:
-                detection_result.update({
-                    'vulnerable': True,
-                    'method': 'dom_based',
-                    'evidence': f"DOM-based XSS detected: {dom_vulnerabilities}"
-                })
-                return detection_result
-                
-            # Method 4: Check for JavaScript execution in attributes
-            attribute_xss = self.check_attribute_xss(driver, payload)
-            if attribute_xss:
-                detection_result.update({
-                    'vulnerable': True,
-                    'method': 'attribute_execution',
-                    'evidence': f"XSS in HTML attributes: {attribute_xss}"
-                })
-                return detection_result
-                
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
-            self.log(f"Detection error for {context}: {e}", "debug")
+            self.log(f"Detection error for {context}: {str(e)[:100]}", "debug")
             
         return detection_result
 
-    def analyze_reflection(self, page_source, payload):
-        """Analyze how and where the payload is reflected"""
-        reflections = []
-        
-        # Clean payload for regex (escape special chars)
-        clean_payload = re.escape(payload)
-        
-        # Look for exact reflection
-        if payload in page_source:
-            reflections.append("exact_reflection")
-        
-        # Look for URL-encoded reflection
-        encoded_payload = urllib.parse.quote(payload)
-        if encoded_payload in page_source:
-            reflections.append("url_encoded_reflection")
-        
-        # Look for partial reflection
-        if len(payload) > 5:
-            for i in range(3, len(payload) - 2):
-                partial = payload[i:i+3]
-                if partial in page_source:
-                    reflections.append("partial_reflection")
-                    break
-        
-        return reflections if reflections else None
-
-    def check_dangerous_contexts(self, driver, payload):
-        """Check if payload appears in dangerous HTML/JavaScript contexts"""
+    def check_dangerous_contexts(self, payload):
+        """Check if payload appears in dangerous HTML/JavaScript contexts (uses self.driver)"""
+        return self._check_dangerous_contexts_with_driver(self.driver, payload)
+    
+    def _check_dangerous_contexts_with_driver(self, driver, payload):
+        """Check if payload appears in dangerous HTML/JavaScript contexts with specific driver"""
         dangerous_contexts = []
         
         try:
             # Check inside script tags
             scripts = driver.find_elements(By.TAG_NAME, "script")
             for script in scripts:
-                script_content = script.get_attribute("innerHTML")
-                if payload in script_content:
-                    dangerous_contexts.append("inside_script_tag")
-                    break
+                try:
+                    script_content = script.get_attribute("innerHTML")
+                    if script_content and payload in script_content:
+                        dangerous_contexts.append("script_tag")
+                        break
+                except:
+                    pass
             
             # Check in event handlers
-            event_attributes = ['onclick', 'onload', 'onerror', 'onmouseover', 'onmouseenter', 
-                              'onfocus', 'onblur', 'onchange', 'onsubmit']
+            event_attributes = ['onclick', 'onload', 'onerror', 'onmouseover']
             
             for attr in event_attributes:
-                elements = driver.find_elements(By.XPATH, f"//*[@{attr}]")
-                for element in elements:
-                    attr_value = element.get_attribute(attr)
-                    if attr_value and payload in attr_value:
-                        dangerous_contexts.append(f"event_handler_{attr}")
-                        break
+                try:
+                    elements = driver.find_elements(By.XPATH, f"//*[@{attr}]")
+                    for element in elements:
+                        attr_value = element.get_attribute(attr)
+                        if attr_value and payload in attr_value:
+                            dangerous_contexts.append(f"event_{attr}")
+                            return dangerous_contexts  # Early exit
+                except:
+                    pass
             
             # Check in href attributes with javascript:
-            links = driver.find_elements(By.TAG_NAME, "a")
-            for link in links:
-                href = link.get_attribute("href")
-                if href and "javascript:" in href and payload in href:
-                    dangerous_contexts.append("javascript_href")
-                    break
-            
-            # Check in style attributes
-            elements_with_style = driver.find_elements(By.XPATH, "//*[@style]")
-            for element in elements_with_style:
-                style = element.get_attribute("style")
-                if style and payload in style:
-                    dangerous_contexts.append("style_attribute")
-                    break
+            try:
+                links = driver.find_elements(By.TAG_NAME, "a")
+                for link in links:
+                    href = link.get_attribute("href")
+                    if href and "javascript:" in href and payload in href:
+                        dangerous_contexts.append("javascript_href")
+                        break
+            except:
+                pass
                     
         except Exception as e:
             self.log(f"Error checking dangerous contexts: {e}", "debug")
             
         return dangerous_contexts if dangerous_contexts else None
-
-    def check_dom_xss(self, driver, payload):
-        """Check for DOM-based XSS vulnerabilities"""
-        dom_indicators = []
-        
-        try:
-            # Check document.write and similar
-            scripts = driver.find_elements(By.TAG_NAME, "script")
-            dom_functions = ['document.write', 'document.writeln', 'innerHTML', 'outerHTML', 
-                           'eval(', 'setTimeout', 'setInterval', 'Function(']
-            
-            for script in scripts:
-                script_content = script.get_attribute("innerHTML")
-                if script_content:
-                    for func in dom_functions:
-                        if func in script_content and payload in script_content:
-                            dom_indicators.append(f"dom_function_{func}")
-                            break
-            
-            # Check location.hash and URL-based DOM XSS
-            if 'location.hash' in driver.page_source or 'location.search' in driver.page_source:
-                dom_indicators.append("location_based_dom")
-                
-        except Exception as e:
-            self.log(f"Error checking DOM XSS: {e}", "debug")
-            
-        return dom_indicators if dom_indicators else None
-
-    def check_attribute_xss(self, driver, payload):
-        """Check for XSS in HTML attributes"""
-        attribute_vulns = []
-        
-        try:
-            # Check for unquoted attributes that contain our payload
-            elements = driver.find_elements(By.XPATH, "//*[@*]")
-            
-            for element in elements:
-                attributes = driver.execute_script(
-                    "var items = {}; "
-                    "for (var index = 0; index < arguments[0].attributes.length; ++index) { "
-                    "  items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value "
-                    "} "
-                    "return items;", element)
-                
-                for attr_name, attr_value in attributes.items():
-                    if payload in attr_value:
-                        # Check if it's a dangerous context
-                        if attr_name.startswith('on') or attr_name in ['href', 'src', 'action']:
-                            attribute_vulns.append(f"attribute_{attr_name}")
-                            break
-                            
-        except Exception as e:
-            self.log(f"Error checking attribute XSS: {e}", "debug")
-            
-        return attribute_vulns if attribute_vulns else None

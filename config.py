@@ -21,6 +21,11 @@ class Config:
         self.max_workers = 3
         self.retry_count = 2
         
+        # Aggressive mode settings (optimized for stability)
+        self.aggressive_threads = 20  # Conservative: like 20 people scanning
+        self.ultra_aggressive_threads = 20  # Same as aggressive (browser limit)
+        self.insane_threads = 20  # Max safe browser instances
+        
         # Enhanced detection settings
         self.detection_strings = ["XSS", "xss", "alert", "confirm", "prompt", "document.cookie"]
         

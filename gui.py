@@ -545,9 +545,10 @@ class XSSScanner:
                             
         except Exception as e:
             self.log(f"Error checking attribute XSS: {e}", "debug")
-
-
             
+        return attribute_vulns if attribute_vulns else None
+
+
 #!/usr/bin/env python3
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
