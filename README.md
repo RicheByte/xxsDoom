@@ -1,4 +1,4 @@
-# 🚀 XssDoom - Advanced XSS Scanner
+#  XssDoom - Advanced XSS Scanner
 
 ![XSS Scanner](https://img.shields.io/badge/XSS-Scanner-red)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
@@ -9,7 +9,7 @@ A comprehensive, feature-rich Cross-Site Scripting (XSS) vulnerability scanner w
 ![CLI](/assets/cli.gif)
 ##  Features
 
-### 🔥 **NEW: Aggressive Parallel Scanning**
+###  **NEW: Aggressive Parallel Scanning**
 - **Multi-threaded Scanning**: Run with 50, 100, or 200+ parallel browser instances
 - **Lightning Fast**: Scan at speeds like having 1000 people testing simultaneously
 - **Scalable Performance**: Choose from Aggressive, Ultra, or INSANE mode based on your system
@@ -80,7 +80,7 @@ python xsscan.py "http://testphp.vulnweb.com/search.php?test=query" -v
 
 ##  Usage
 
-### 🔥 Aggressive Parallel Scanning (NEW!)
+###  Aggressive Parallel Scanning (NEW!)
 
 **Scan like 1000 people working simultaneously:**
 
@@ -106,7 +106,7 @@ python xsscan.py --threads 75 https://example.com
 | Ultra (`--ultra`) | ~100x | High | Powerful systems |
 | INSANE (`--insane`) | ~200x | Very High | Maximum speed |
 
-📖 **[Full Aggressive Mode Guide](AGGRESSIVE_MODE.md)**
+ **[Full Aggressive Mode Guide](AGGRESSIVE_MODE.md)**
 
 ### Command Line Interface (CLI)
 
@@ -179,7 +179,7 @@ xsscan/
 └── requirements.txt        # Project dependencies
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Payload Categories
 
