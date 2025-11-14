@@ -6,7 +6,7 @@
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 A comprehensive, feature-rich Cross-Site Scripting (XSS) vulnerability scanner with both CLI and GUI interfaces. Designed for security professionals, penetration testers, and bug bounty hunters.
-
+![CLI](/assets/cli.gif)
 ##  Features
 
 ### 🔥 **NEW: Aggressive Parallel Scanning**
@@ -36,6 +36,8 @@ A comprehensive, feature-rich Cross-Site Scripting (XSS) vulnerability scanner w
 - **Parallel Processing**: Efficient scanning with configurable workers
 - **Error Resilience**: Robust error handling and recovery mechanisms
 - **Customizable Settings**: Adjustable timeouts, delays, and scan options
+
+![GUI](/assets/gui.gif) 
 
 ##  Quick Start
 
